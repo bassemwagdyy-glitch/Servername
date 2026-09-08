@@ -108,7 +108,7 @@
   function licenseFormHtml(prefix){
     return `
       <div class="row-2">
-        <div class="field"><label>اسم العميل *</label><input type="text" id="${prefix}Customer" placeholder="مثال: محمد الشرقاوي"></div>
+        <div class="field"><label>اسم العميل *</label><input type="text" id="${prefix}Customer" placeholder="مثال: أحمد محمد"></div>
         <div class="field"><label>اسم المحل / الفرع *</label><input type="text" id="${prefix}Store" placeholder="مثال: فرع المعادي"></div>
       </div>
       <div class="row-2">
@@ -116,6 +116,10 @@
         <div class="field"><label>ملاحظات (اختياري)</label><input type="text" id="${prefix}Note"></div>
       </div>
       <div class="field"><label>مدة الترخيص</label>${durationGridHtml(prefix)}</div>
+      <div class="field" style="max-width:200px;">
+        <label>أقصى عدد أجهزة بنفس المفتاح</label>
+        <input type="number" id="${prefix}MaxDevices" value="1" min="1" max="999">
+      </div>
       <button class="btn btn-primary" id="${prefix}BtnGenerate">🔑 إنشاء الترخيص</button>
       <div class="err" id="${prefix}Error"></div>
       <textarea class="result-key" id="${prefix}ResultKey" rows="4" readonly style="display:none;"></textarea>
@@ -139,6 +143,7 @@
       const err = $(prefix + "Error");
       err.textContent = "";
       if(!customerName || !storeName){ err.textContent = "من فضلك اكتبي اسم العميل والمحل"; return; }
+      const maxDevices = parseInt($(prefix + "MaxDevices").value) || 1;
       try{
         const data = await api("/api/admin/licenses", {
           method: "POST",
@@ -147,7 +152,8 @@
             phone: $(prefix + "Phone").value.trim(),
             note: $(prefix + "Note").value.trim(),
             duration: selectedDuration,
-            customDate: $(prefix + "CustomDate").value
+            customDate: $(prefix + "CustomDate").value,
+            maxDevices
           })
         });
         $(prefix + "ResultKey").style.display = "block";
@@ -182,12 +188,13 @@
         const expired = new Date(lic.expires_at) < now;
         const status = lic.status === "revoked" ? "bad" : (expired ? "bad" : "ok");
         const statusText = lic.status === "revoked" ? "ملغى" : (expired ? "منتهي" : "نشط");
+        const devPillClass = lic.device_count >= lic.max_devices ? "warn" : "ok";
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${lic.customer_name}</td>
           <td>${lic.store_name}</td>
           <td>${fmtDate(lic.expires_at)}</td>
-          <td>${fmtDateTime(lic.last_check_at)}</td>
+          <td><span class="status-pill ${devPillClass}">${lic.device_count} / ${lic.max_devices}</span></td>
           <td><span class="status-pill ${status}">${statusText}</span></td>
           <td>
             <div class="row-actions">
@@ -327,24 +334,34 @@
       data.devices.forEach(d => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td>${d.customer_name}<br><span style="color:var(--ink-dim); font-size:11px;">${d.store_name}</span></td>
+          <td>${d.customer_name}<br><span style="color:var(--ink-dim); font-size:11px;">${d.store_name} — ${d.max_devices > 1 ? "حد أقصى " + d.max_devices + " أجهزة" : "جهاز واحد بس"}</span></td>
           <td style="font-family:var(--font-num); font-size:11px;">${d.device_id}</td>
           <td>${fmtDateTime(d.last_seen)}</td>
           <td>
             <div class="row-actions">
               <button class="btn btn-ghost btn-sm" data-cfg-device="${d.device_id}">⚙️ الجهاز ده بس</button>
               <button class="btn btn-ghost btn-sm" data-cfg-license="${d.license_id}" data-lic-name="${d.customer_name} — ${d.store_name}">⚙️ كل أجهزة الترخيص</button>
+              <button class="btn btn-danger" data-forget-device="${d.device_id}" data-forget-license="${d.license_id}">نسيان الجهاز (تفريغ مكانه)</button>
             </div>
           </td>`;
         body.appendChild(tr);
       });
     }catch(e){ showToast("تعذّر تحميل الأجهزة"); }
   }
-  $("devicesBody").addEventListener("click", (e) => {
+  $("devicesBody").addEventListener("click", async (e) => {
     const devBtn = e.target.closest("[data-cfg-device]");
     const licBtn = e.target.closest("[data-cfg-license]");
+    const forgetBtn = e.target.closest("[data-forget-device]");
     if(devBtn) openConfigModal("device", devBtn.dataset.cfgDevice, "الجهاز: " + devBtn.dataset.cfgDevice);
     if(licBtn) openConfigModal("license", licBtn.dataset.cfgLicense, "كل أجهزة: " + licBtn.dataset.licName);
+    if(forgetBtn){
+      if(!confirm("هيتفرّغ مكان الجهاز ده من حد الأجهزة المسموح بيه للترخيص، وأي جهاز جديد هيقدر ياخد مكانه. الجهاز القديم نفسه هيحتاج تفعيل تاني لو حاول يشتغل تاني. تأكيد؟")) return;
+      try{
+        await api(`/api/admin/devices/${forgetBtn.dataset.forgetLicense}/${encodeURIComponent(forgetBtn.dataset.forgetDevice)}`, { method: "DELETE" });
+        showToast("تم تفريغ مكان الجهاز");
+        loadDevices();
+      }catch(err){ showToast("حصل خطأ"); }
+    }
   });
 
   /* ===================== مودال ضبط الإعدادات عن بُعد ===================== */
