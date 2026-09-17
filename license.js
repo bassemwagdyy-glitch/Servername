@@ -47,8 +47,8 @@ function verifyLicenseTokenSignature(token) {
   return { valid: true, payload };
 }
 
-function computeExpiry(durationKey, customDateStr) {
-  const d = new Date();
+function computeExpiry(durationKey, customDateStr, fromDate) {
+  const d = fromDate ? new Date(fromDate) : new Date();
   switch (durationKey) {
     case 'day': d.setDate(d.getDate() + 1); break;
     case '3days': d.setDate(d.getDate() + 3); break;

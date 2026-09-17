@@ -17,8 +17,20 @@ function defaultData() {
     remoteConfigs: [],
     appVersions: [],
     adminEvents: [],
+    customers: [],
+    subscriptions: [],
+    paymentClaims: [],
+    otpCodes: [],
+    paymentSettings: {
+      bankDetails: '',
+      vodafoneCash: '',
+      instapay: ''
+    },
     nextVersionId: 1,
-    nextEventId: 1
+    nextEventId: 1,
+    nextCustomerId: 1,
+    nextSubscriptionId: 1,
+    nextClaimId: 1
   };
 }
 
