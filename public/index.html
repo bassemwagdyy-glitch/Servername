@@ -145,6 +145,8 @@
 
   <div class="tabs">
     <button class="tab-btn active" data-tab="overview">نظرة عامة</button>
+    <button class="tab-btn" data-tab="customers">العملاء</button>
+    <button class="tab-btn" data-tab="payments">المدفوعات</button>
     <button class="tab-btn" data-tab="licenses">التراخيص</button>
     <button class="tab-btn" data-tab="devices">الأجهزة والإعدادات</button>
     <button class="tab-btn" data-tab="versions">التحديثات</button>
@@ -182,6 +184,70 @@
   </div>
 
   <!-- الأجهزة والإعدادات -->
+  <!-- العملاء -->
+  <div class="page" id="page-customers">
+    <div class="card">
+      <h2>إضافة عميل جديد</h2>
+      <div class="sub">بتنشئي حساب دخول للعميل يقدر بيه يدخل بوابة العميل برقم موبايله، يشوف اشتراكه، ويبعت طلبات الدفع (الحساب ده بيتحسب موثّق تلقائيًا من غير ما يحتاج كود تأكيد لأنك انتي بتضيفيه بنفسك)</div>
+      <div class="row-2">
+        <div class="field"><label>اسم العميل *</label><input type="text" id="cCustomer" placeholder="مثال: أحمد محمد"></div>
+        <div class="field"><label>اسم المحل / الفرع *</label><input type="text" id="cStore" placeholder="مثال: سوبر ماركت النور"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>رقم الموبايل * (ده اللي هيدخل بيه)</label><input type="tel" id="cPhone" placeholder="01xxxxxxxxx"></div>
+        <div class="field"><label>البريد الإلكتروني (اختياري)</label><input type="email" id="cEmail"></div>
+      </div>
+      <div class="field"><label>كلمة السر *</label><input type="text" id="cPassword" placeholder="كلمة سر مبدئية"></div>
+      <button class="btn btn-primary" id="btnCreateCustomer">➕ إنشاء حساب العميل</button>
+      <div class="err" id="createCustomerError"></div>
+    </div>
+    <div class="card">
+      <h2>كل العملاء</h2>
+      <div class="search-row">
+        <input type="text" id="customerSearch" placeholder="دوّر بالاسم أو المحل أو اسم المستخدم...">
+        <button class="btn btn-ghost btn-sm" id="btnRefreshCustomers">🔄</button>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>العميل</th><th>المحل</th><th>رقم الموبايل</th><th>الاشتراك</th><th></th></tr></thead>
+          <tbody id="customersBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- المدفوعات -->
+  <div class="page" id="page-payments">
+    <div class="card">
+      <h2>بيانات استقبال الدفع</h2>
+      <div class="sub">دي التعليمات اللي هتظهر للعميل في بوابته لما يحب يدفع</div>
+      <div class="field"><label>بيانات التحويل البنكي</label><textarea id="pBankDetails" rows="3" placeholder="اسم البنك، رقم الحساب، اسم صاحب الحساب..."></textarea></div>
+      <div class="row-2">
+        <div class="field"><label>رقم فودافون كاش</label><input type="text" id="pVodafoneCash" placeholder="01xxxxxxxxx"></div>
+        <div class="field"><label>بيانات إنستاباي</label><input type="text" id="pInstapay" placeholder="اسم المستخدم أو الرقم"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="btnSavePaymentSettings">حفظ بيانات الدفع</button>
+    </div>
+    <div class="card">
+      <h2>طلبات الدفع</h2>
+      <div class="search-row">
+        <select id="claimsFilter" style="background:var(--surface-2); border:1px solid var(--border); color:var(--ink); border-radius:10px; padding:9px 14px; font-size:13px;">
+          <option value="pending">قيد المراجعة</option>
+          <option value="approved">مقبولة</option>
+          <option value="rejected">مرفوضة</option>
+          <option value="">الكل</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="btnRefreshClaims">🔄</button>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>العميل</th><th>الطريقة</th><th>المدة</th><th>المبلغ</th><th>مرجع العملية</th><th>التاريخ</th><th>الحالة</th><th></th></tr></thead>
+          <tbody id="claimsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="page" id="page-devices">
     <div class="card">
       <h2>الأجهزة المتصلة</h2>
@@ -232,6 +298,25 @@
       <button class="btn btn-primary" id="btnApplyConfig" style="flex:1;">⬆️ رفع وتطبيق</button>
       <button class="btn btn-danger" id="btnClearConfig">إلغاء التخصيص</button>
       <button class="btn btn-ghost" id="btnCloseConfigModal">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال منح فترة اشتراك يدويًا -->
+<div id="grantModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:200; align-items:center; justify-content:center; padding:20px;">
+  <div class="card" style="max-width:400px; width:100%; margin:0;">
+    <h2>منح فترة اشتراك</h2>
+    <div class="sub" id="grantModalSub"></div>
+    <div class="dur-grid" id="grantDurGrid">
+      <button type="button" class="dur-btn active" data-dur="month">شهر</button>
+      <button type="button" class="dur-btn" data-dur="3months">3 شهور</button>
+      <button type="button" class="dur-btn" data-dur="6months">6 شهور</button>
+      <button type="button" class="dur-btn" data-dur="year">سنة</button>
+    </div>
+    <div class="err" id="grantModalError"></div>
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button class="btn btn-primary" id="btnConfirmGrant" style="flex:1;">✅ منح الفترة دي</button>
+      <button class="btn btn-ghost" id="btnCloseGrantModal">إلغاء</button>
     </div>
   </div>
 </div>

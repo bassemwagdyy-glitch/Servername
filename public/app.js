@@ -79,6 +79,8 @@
       if(btn.dataset.tab === "licenses") loadLicenses();
       if(btn.dataset.tab === "versions") loadVersions();
       if(btn.dataset.tab === "devices") loadDevices();
+      if(btn.dataset.tab === "customers") loadCustomers();
+      if(btn.dataset.tab === "payments") { loadPaymentSettings(); loadClaims(); }
     });
   });
 
@@ -427,6 +429,168 @@
       showToast("تم إلغاء التخصيص");
       $("configModalOverlay").style.display = "none";
     }catch(e){ showToast("حصل خطأ"); }
+  });
+
+  /* ===================== العملاء ===================== */
+  $("btnCreateCustomer").addEventListener("click", async () => {
+    const name = $("cCustomer").value.trim();
+    const storeName = $("cStore").value.trim();
+    const phone = $("cPhone").value.trim();
+    const password = $("cPassword").value;
+    const err = $("createCustomerError");
+    err.textContent = "";
+    if(!name || !storeName || !phone || !password){ err.textContent = "من فضلك املأ كل الحقول المطلوبة (*)"; return; }
+    try{
+      await api("/api/admin/customers", {
+        method: "POST",
+        body: JSON.stringify({ name, storeName, phone, email: $("cEmail").value.trim(), password })
+      });
+      showToast("تم إنشاء حساب العميل");
+      $("cCustomer").value = ""; $("cStore").value = ""; $("cPhone").value = ""; $("cEmail").value = ""; $("cPassword").value = "";
+      loadCustomers();
+    }catch(e){ err.textContent = e.message === "phone-taken" ? "الرقم ده مسجّل بحساب تاني بالفعل" : "حصل خطأ أثناء الإنشاء"; }
+  });
+
+  async function loadCustomers(filter){
+    const body = $("customersBody");
+    try{
+      const data = await api("/api/admin/customers" + (filter ? "?q=" + encodeURIComponent(filter) : ""));
+      body.innerHTML = "";
+      if(data.customers.length === 0){
+        body.innerHTML = '<tr class="empty-row"><td colspan="5">لسه مفيش عملاء</td></tr>';
+        return;
+      }
+      const statusMap = { active: ["نشط","ok"], expired: ["منتهي","bad"], revoked: ["موقوف","bad"], none: ["مفيش اشتراك","warn"] };
+      data.customers.forEach(c => {
+        const [label, cls] = statusMap[c.subscriptionStatus] || ["—","warn"];
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${c.name}${!c.phoneVerified ? " <span class='status-pill warn'>غير موثّق</span>" : ""}</td>
+          <td>${c.storeName}</td>
+          <td style="font-family:var(--font-num);">${c.phone}</td>
+          <td><span class="status-pill ${cls}">${label}</span>${c.expiresAt ? "<br><span style='color:var(--ink-dim); font-size:10.5px;'>"+fmtDate(c.expiresAt)+"</span>" : ""}</td>
+          <td>
+            <div class="row-actions">
+              <button class="btn btn-ghost btn-sm" data-grant="${c.id}" data-grant-name="${c.name} — ${c.storeName}">➕ منح فترة</button>
+              <button class="btn btn-danger" data-del-customer="${c.id}">حذف</button>
+            </div>
+          </td>`;
+        body.appendChild(tr);
+      });
+    }catch(e){ showToast("تعذّر تحميل العملاء"); }
+  }
+  $("customerSearch").addEventListener("input", (e) => loadCustomers(e.target.value));
+  $("btnRefreshCustomers").addEventListener("click", () => loadCustomers($("customerSearch").value));
+
+  $("customersBody").addEventListener("click", async (e) => {
+    const grantBtn = e.target.closest("[data-grant]");
+    const delBtn = e.target.closest("[data-del-customer]");
+    if(grantBtn) openGrantModal(grantBtn.dataset.grant, grantBtn.dataset.grantName);
+    if(delBtn){
+      if(!confirm("هيتحذف حساب العميل ده والاشتراك المرتبط بيه (الترخيص نفسه هيفضل موجود في تاب التراخيص). تأكيد؟")) return;
+      try{ await api(`/api/admin/customers/${delBtn.dataset.delCustomer}`, { method: "DELETE" }); showToast("تم الحذف"); loadCustomers($("customerSearch").value); }
+      catch(e){ showToast("حصل خطأ"); }
+    }
+  });
+
+  /* ===================== منح فترة اشتراك يدويًا ===================== */
+  let grantCustomerId = null;
+  let grantDuration = "month";
+  function openGrantModal(customerId, label){
+    grantCustomerId = customerId;
+    $("grantModalSub").textContent = label;
+    $("grantModalError").textContent = "";
+    $("grantModalOverlay").style.display = "flex";
+  }
+  $("btnCloseGrantModal").addEventListener("click", () => { $("grantModalOverlay").style.display = "none"; });
+  $("grantDurGrid").addEventListener("click", (e) => {
+    const btn = e.target.closest(".dur-btn");
+    if(!btn) return;
+    $("grantDurGrid").querySelectorAll(".dur-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    grantDuration = btn.dataset.dur;
+  });
+  $("btnConfirmGrant").addEventListener("click", async () => {
+    try{
+      await api(`/api/admin/customers/${grantCustomerId}/grant`, { method: "POST", body: JSON.stringify({ duration: grantDuration }) });
+      showToast("تم منح الفترة وتفعيل الاشتراك");
+      $("grantModalOverlay").style.display = "none";
+      loadCustomers($("customerSearch").value);
+    }catch(e){ $("grantModalError").textContent = "حصل خطأ أثناء المنح"; }
+  });
+
+  /* ===================== إعدادات الدفع ===================== */
+  async function loadPaymentSettings(){
+    try{
+      const s = await fetch("/api/payment-settings").then(r => r.json());
+      $("pBankDetails").value = s.bankDetails || "";
+      $("pVodafoneCash").value = s.vodafoneCash || "";
+      $("pInstapay").value = s.instapay || "";
+    }catch(e){ showToast("تعذّر تحميل إعدادات الدفع"); }
+  }
+  $("btnSavePaymentSettings").addEventListener("click", async () => {
+    try{
+      await api("/api/admin/payment-settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          bankDetails: $("pBankDetails").value.trim(),
+          vodafoneCash: $("pVodafoneCash").value.trim(),
+          instapay: $("pInstapay").value.trim()
+        })
+      });
+      showToast("تم حفظ إعدادات الدفع");
+    }catch(e){ showToast("حصل خطأ أثناء الحفظ"); }
+  });
+
+  /* ===================== طلبات الدفع ===================== */
+  async function loadClaims(){
+    const body = $("claimsBody");
+    const status = $("claimsFilter").value;
+    try{
+      const data = await api("/api/admin/payment-claims" + (status ? "?status=" + status : ""));
+      body.innerHTML = "";
+      if(data.claims.length === 0){
+        body.innerHTML = '<tr class="empty-row"><td colspan="8">مفيش طلبات هنا</td></tr>';
+        return;
+      }
+      const methodNames = { bank_transfer: "تحويل بنكي", vodafone_cash: "فودافون كاش", instapay: "إنستاباي" };
+      const durNames = { day:"يوم", "3days":"3 أيام", week:"أسبوع", month:"شهر", "3months":"3 شهور", "6months":"6 شهور", year:"سنة" };
+      const statusMap = { pending: ["قيد المراجعة","warn"], approved: ["مقبول","ok"], rejected: ["مرفوض","bad"] };
+      data.claims.forEach(c => {
+        const [label, cls] = statusMap[c.status] || [c.status, "warn"];
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${c.customerName}<br><span style="color:var(--ink-dim); font-size:11px;">${c.storeName}</span></td>
+          <td>${methodNames[c.method] || c.method}</td>
+          <td>${durNames[c.duration] || c.duration}</td>
+          <td>${c.amount || "—"}</td>
+          <td>${c.reference || "—"}</td>
+          <td>${fmtDateTime(c.submittedAt)}</td>
+          <td><span class="status-pill ${cls}">${label}</span></td>
+          <td>${c.status === "pending" ? `
+            <div class="row-actions">
+              <button class="btn btn-primary btn-sm" data-approve="${c.id}">✅ قبول</button>
+              <button class="btn btn-danger" data-reject="${c.id}">✕ رفض</button>
+            </div>` : "—"}</td>`;
+        body.appendChild(tr);
+      });
+    }catch(e){ showToast("تعذّر تحميل طلبات الدفع"); }
+  }
+  $("claimsFilter").addEventListener("change", loadClaims);
+  $("btnRefreshClaims").addEventListener("click", loadClaims);
+  $("claimsBody").addEventListener("click", async (e) => {
+    const approveBtn = e.target.closest("[data-approve]");
+    const rejectBtn = e.target.closest("[data-reject]");
+    if(approveBtn){
+      if(!confirm("هيتفعّل أو يتجدد اشتراك العميل ده على أساس المدة اللي طلبها. تأكيد؟")) return;
+      try{ await api(`/api/admin/payment-claims/${approveBtn.dataset.approve}/approve`, { method: "POST" }); showToast("تم القبول والتفعيل"); loadClaims(); }
+      catch(e){ showToast("حصل خطأ"); }
+    }
+    if(rejectBtn){
+      if(!confirm("هيترفض طلب الدفع ده. تأكيد؟")) return;
+      try{ await api(`/api/admin/payment-claims/${rejectBtn.dataset.reject}/reject`, { method: "POST" }); showToast("تم الرفض"); loadClaims(); }
+      catch(e){ showToast("حصل خطأ"); }
+    }
   });
 
   /* ===================== بدء التشغيل ===================== */
